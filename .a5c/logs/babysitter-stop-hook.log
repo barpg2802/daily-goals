@@ -1,0 +1,11 @@
+[INFO] 2026-07-16T09:25:59Z Hook script invoked
+[INFO] 2026-07-16T09:25:59Z PLUGIN_ROOT=/Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-16T09:25:59Z Hook input received (    1752 bytes)
+[INFO] 2026-07-16T09:25:59.164Z handleHookRunStop started
+[INFO] 2026-07-16T09:25:59.168Z Hook input received
+[INFO] 2026-07-16T09:25:59.176Z [session=47ef06b9-bd41-421e-9979-d7ccd137b7a0] Session ID: 47ef06b9-bd41-421e-9979-d7ccd137b7a0
+[INFO] 2026-07-16T09:25:59.185Z [session=47ef06b9-bd41-421e-9979-d7ccd137b7a0] Resolved pluginRoot: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-16T09:25:59.203Z [session=47ef06b9-bd41-421e-9979-d7ccd137b7a0] Resolved stateDir: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state
+[INFO] 2026-07-16T09:25:59.233Z [session=47ef06b9-bd41-421e-9979-d7ccd137b7a0] Checking session file at: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/47ef06b9-bd41-421e-9979-d7ccd137b7a0.md
+[INFO] 2026-07-16T09:25:59.244Z [session=47ef06b9-bd41-421e-9979-d7ccd137b7a0] No run associated with session — allowing exit
+[INFO] 2026-07-16T09:25:59Z CLI exit code=0

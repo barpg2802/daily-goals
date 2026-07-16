@@ -26,9 +26,13 @@
     padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
     max-width:520px; margin-inline:auto;
   }
-  header{ display:flex; align-items:baseline; justify-content:space-between; margin:8px 2px 20px; }
+  header{ display:flex; align-items:baseline; justify-content:space-between; margin:8px 2px 6px; }
   header h1{ font-size:24px; margin:0; letter-spacing:-.02em; }
   header .date{ color:var(--muted); font-size:14px; }
+  .sync{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; margin:0 2px 18px; }
+  .sync .dot{ width:8px; height:8px; border-radius:50%; background:#34d399; }
+  .sync[data-state="offline"] .dot{ background:#fb923c; }
+  .sync[data-state="syncing"] .dot{ background:#9aa3c7; }
 
   .card{
     background:var(--card); border-radius:22px; padding:18px; margin-bottom:16px;
@@ -71,17 +75,47 @@
     border-radius:12px; padding:0 12px; font-size:16px; cursor:pointer; }
   .custom button:active{ transform:scale(.95); }
 
-  footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:12px; }
+  details.devices{ background:var(--card); border-radius:16px; padding:12px 16px; box-shadow:var(--shadow); }
+  details.devices summary{ cursor:pointer; color:var(--muted); font-size:14px; }
+  details.devices .row{ display:flex; gap:8px; margin-top:10px; }
+  details.devices input{ flex:1; min-width:0; border:1px solid var(--track); background:var(--card2);
+    color:var(--text); border-radius:10px; padding:8px 10px; font-size:13px; }
+  details.devices button{ border:0; border-radius:10px; padding:0 12px; font-weight:600; cursor:pointer;
+    color:#fff; background:#38bdf8; }
+  details.devices p{ color:var(--muted); font-size:12px; margin:8px 0 2px; }
+  footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:14px; }
 </style>
 
 <header>
   <h1>Daily Goals</h1>
   <span class="date" id="date"></span>
 </header>
-<main id="app"></main>
-<footer>Saved on this device · tap the goal to change it</footer>
+<div class="sync" id="sync" data-state="syncing"><span class="dot"></span><span id="syncText">connecting…</span></div>
 
-<script>
+<main id="app"></main>
+
+<details class="devices">
+  <summary>🔗 Sync across devices</summary>
+  <p>This device's sync code — paste it on another device to see the same data:</p>
+  <div class="row">
+    <input id="myCode" readonly>
+    <button onclick="copyCode()">Copy</button>
+  </div>
+  <p>Load another device's data (paste its code):</p>
+  <div class="row">
+    <input id="otherCode" placeholder="paste sync code">
+    <button onclick="useCode()">Use</button>
+  </div>
+</details>
+<footer>Synced to the cloud · tap a goal to change it</footer>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SB_URL  = 'https://hpzjieftfscvppwklqjf.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwemppZWZ0ZnNjdnBwd2tscWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxOTAzOTUsImV4cCI6MjA5OTc2NjM5NX0.3sCfKfaTWKapnq3Xms11BmS7x8NuCmRGJyhmgcauhds';
+const sb = createClient(SB_URL, SB_ANON, { auth:{ persistSession:false } });
+
 // ── Trackers. Add another (e.g. weed weekly) by adding one object here. ──────
 const TRACKERS = [
   { id:'water',   emoji:'💧', name:'Water',   unit:'ml',       period:'day',  goal:3000, accent:'#38bdf8',
@@ -92,13 +126,32 @@ const TRACKERS = [
     quick:[['+1 session',1]] },
 ];
 
-const KEY = 'daily-goals-v1';
-const data = load();
-data.goals   ??= {};
-data.entries ??= [];   // [{t:id, a:amount, d:ISOstring}] — ponytail: never pruned; cap if it ever gets huge
+// ── Storage: localStorage = instant/offline cache, Supabase = source of truth ─
+const LKEY = 'daily-goals-v1';
+let vaultId = localStorage.getItem('daily-goals-vault');
+if(!vaultId){ vaultId = crypto.randomUUID(); localStorage.setItem('daily-goals-vault', vaultId); }
 
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {}; }catch{ return {}; } }
-function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{t,a,d}] — ponytail: never pruned
+let data = readLocal();
+
+function readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)) || blank(); }catch{ return blank(); } }
+function writeLocal(){ localStorage.setItem(LKEY, JSON.stringify(data)); }
+
+function setSync(state, text){ const el=document.getElementById('sync');
+  el.dataset.state=state; document.getElementById('syncText').textContent=text; }
+
+async function pull(){
+  const { data:remote, error } = await sb.rpc('get_vault', { p_id: vaultId });
+  if(error){ setSync('offline','offline — saved on this device'); return undefined; }
+  return remote;                                   // blob object, or null if new vault
+}
+async function push(){
+  setSync('syncing','saving…');
+  const { error } = await sb.rpc('save_vault',
+    { p_id: vaultId, p_data: data, p_updated: new Date(data.updatedAt).toISOString() });
+  setSync(error?'offline':'synced', error?'offline — will sync later':'synced');
+}
+function touchSave(){ data.updatedAt = Date.now(); writeLocal(); render(); push(); }
 
 // ── Date bucketing ──────────────────────────────────────────────────────────
 function dayKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
@@ -110,29 +163,38 @@ function weekKey(d){                       // ISO week: same key Mon–Sun
   const w = 1 + Math.round(((x-firstThu)/86400000 - 3 + ((firstThu.getDay()+6)%7))/7);
   return x.getFullYear()+'-W'+w;
 }
-const keyOf = (t, d) => t.period==='week' ? weekKey(d) : dayKey(d);
+const keyOf   = (t,d) => t.period==='week' ? weekKey(d) : dayKey(d);
+const goalOf  = t => data.goals[t.id] ?? t.goal;
+const inNow   = (e,t) => keyOf(t,new Date(e.d)) === keyOf(t,new Date());
+const totalOf = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((s,e)=>s+e.a,0);
 
-const goalOf   = t => data.goals[t.id] ?? t.goal;
-const nowKey   = t => keyOf(t, new Date());
-const inNow    = (e,t) => keyOf(t, new Date(e.d)) === nowKey(t);
-const totalOf  = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((s,e)=>s+e.a,0);
-
-function add(t, amt){ if(!amt) return; data.entries.push({t:t.id, a:amt, d:new Date().toISOString()}); save(); render(); }
-function undo(t){
-  for(let i=data.entries.length-1; i>=0; i--){
+// ── Actions (exposed for inline onclick) ─────────────────────────────────────
+window.add = (t, amt) => { if(!amt) return; data.entries.push({t:t.id, a:amt, d:new Date().toISOString()}); touchSave(); };
+window.undo = t => {
+  for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
-  }
-  save(); render();
-}
-function editGoal(t){
+  touchSave();
+};
+window.editGoal = t => {
   const v = prompt(`Goal for ${t.name} (${t.unit} per ${t.period}):`, goalOf(t));
-  if(v!==null && !isNaN(+v) && +v>0){ data.goals[t.id]=+v; save(); render(); }
-}
+  if(v!==null && !isNaN(+v) && +v>0){ data.goals[t.id]=+v; touchSave(); }
+};
+window.TRACKERS = TRACKERS;
+
+window.copyCode = () => { const el=document.getElementById('myCode'); el.select();
+  navigator.clipboard?.writeText(el.value); };
+window.useCode = async () => {
+  const v = document.getElementById('otherCode').value.trim();
+  if(!v || v===vaultId) return;
+  vaultId = v; localStorage.setItem('daily-goals-vault', v);
+  await boot(); document.getElementById('otherCode').value='';
+};
 
 // ── Render ──────────────────────────────────────────────────────────────────
 function render(){
   document.getElementById('date').textContent =
     new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+  document.getElementById('myCode').value = vaultId;
 
   document.getElementById('app').innerHTML = TRACKERS.map((t,i)=>{
     const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
@@ -158,9 +220,24 @@ function render(){
     </div>`;
   }).join('');
 }
-render();
 
-// ── Self-check: run with #test in the URL (date bucketing is the one tricky bit) ──
+// ── Boot: show cached data instantly, then reconcile with cloud (newest wins) ─
+async function boot(){
+  data = readLocal(); render();
+  const remote = await pull();
+  if(remote === undefined) return;                 // offline: keep local, indicator already set
+  if(remote && (remote.updatedAt||0) >= (data.updatedAt||0)){
+    data = remote; writeLocal(); render();         // cloud is newer (or equal) → adopt it
+    setSync('synced','synced');
+  } else if((data.updatedAt||0) > (remote?.updatedAt||0)){
+    setSync('synced','synced'); push();            // local is newer → heal the cloud
+  } else {
+    setSync('synced','synced');                    // both empty
+  }
+}
+boot();
+
+// ── Self-check: open with #test (date bucketing is the one tricky bit) ────────
 if(location.hash==='#test'){
   console.assert(dayKey(new Date(2026,6,16))==='2026-7-16','dayKey');
   console.assert(weekKey(new Date(2026,0,1))===weekKey(new Date(2026,0,2)),'same week');
