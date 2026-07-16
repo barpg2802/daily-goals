@@ -274,10 +274,11 @@ function historyHTML(){
     const rows = list.map(e=>{
       const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
       const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const unit = (t.unit==='sessions' && Math.abs(e.a)===1) ? 'session' : t.unit;
       return `<div class="hrow">
         <span class="htime">${time}</span>
         <span class="hlabel">${t.emoji} ${t.name}</span>
-        <span class="hamt">${e.a>0?'+':''}${e.a} ${t.unit}</span>
+        <span class="hamt">${e.a>0?'+':''}${e.a} ${unit}</span>
         <button class="hdel" title="Delete" onclick="delEntry('${e.id}')">✕</button>
       </div>`;
     }).join('');
