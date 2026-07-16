@@ -142,6 +142,8 @@ const TRACKERS = [
     quick:[['+20',20],['+30',30],['+40',40]] },
   { id:'gym',     emoji:'🏋️', name:'Gym',     unit:'sessions', period:'week', goal:4,    accent:'#34d399',
     quick:[['+1 session',1]] },
+  { id:'dailyf',  emoji:'🅵',  name:'daily F',  unit:'times',    period:'week', goal:3,    accent:'#a78bfa',
+    quick:[['+1',1]] },
 ];
 
 // ── Storage: localStorage = instant/offline cache, Supabase = source of truth ─
@@ -266,12 +268,14 @@ function historyHTML(){
     const list = byDay[k];
     const summary = TRACKERS.map(t=>{
       const s = list.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0);
-      return s ? `${t.emoji} ${s}${t.unit==='sessions'?'':' '+t.unit}` : null;
+      if(!s) return null;
+      const u = (s===1 && t.unit.endsWith('s')) ? t.unit.slice(0,-1) : t.unit;
+      return `${t.emoji} ${s} ${u}`;
     }).filter(Boolean).join(' · ');
     const rows = list.map(e=>{
       const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
       const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      const unit = (t.unit==='sessions' && Math.abs(e.a)===1) ? 'session' : t.unit;
+      const unit = (Math.abs(e.a)===1 && t.unit.endsWith('s')) ? t.unit.slice(0,-1) : t.unit;
       return `<div class="hrow">
         <span class="htime">${time}</span>
         <span class="hlabel">${t.emoji} ${t.name}</span>
