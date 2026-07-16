@@ -175,13 +175,10 @@ function touchSave(){ data.updatedAt = Date.now(); writeLocal(); render(); push(
 
 // ── Date bucketing ──────────────────────────────────────────────────────────
 function dayKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
-function weekKey(d){                       // ISO week: same key Mon–Sun
+function weekKey(d){                        // week = Sunday–Saturday; key = that week's Sunday date
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const day = (x.getDay()+6)%7;            // Mon=0
-  x.setDate(x.getDate()-day+3);            // nearest Thursday
-  const firstThu = new Date(x.getFullYear(),0,4);
-  const w = 1 + Math.round(((x-firstThu)/86400000 - 3 + ((firstThu.getDay()+6)%7))/7);
-  return x.getFullYear()+'-W'+w;
+  x.setDate(x.getDate() - x.getDay());      // getDay(): Sun=0 → step back to the week's Sunday
+  return 'W' + dayKey(x);
 }
 const keyOf   = (t,d) => t.period==='week' ? weekKey(d) : dayKey(d);
 const goalOf  = t => data.goals[t.id] ?? t.goal;
@@ -306,8 +303,8 @@ boot();
 // ── Self-check: open with #test (date bucketing is the one tricky bit) ────────
 if(location.hash==='#test'){
   console.assert(dayKey(new Date(2026,6,16))==='2026-7-16','dayKey');
-  console.assert(weekKey(new Date(2026,0,1))===weekKey(new Date(2026,0,2)),'same week');
-  console.assert(weekKey(new Date(2026,0,4))!==weekKey(new Date(2026,0,5)),'week rolls Mon');
+  console.assert(weekKey(new Date(2026,0,4))===weekKey(new Date(2026,0,5)),'Sun+Mon same week'); // Jan 4 Sun, 5 Mon
+  console.assert(weekKey(new Date(2026,0,3))!==weekKey(new Date(2026,0,4)),'week rolls Sunday');  // Jan 3 Sat, 4 Sun
   console.log('self-check passed');
 }
 </script>
