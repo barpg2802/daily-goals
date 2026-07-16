@@ -1,0 +1,170 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Goals</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1020">
+<!-- iOS: makes "Add to Home Screen" behave like a standalone app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Goals">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230b1020'/%3E%3Ctext x='90' y='128' font-size='96' text-anchor='middle'%3E🎯%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎯%3C/text%3E%3C/svg%3E">
+
+<style>
+  :root{
+    --bg:#0b1020; --card:#161c33; --card2:#1e2645; --text:#eef1ff; --muted:#9aa3c7;
+    --track:#2a3358; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f2f4fb; --card:#ffffff; --card2:#f6f8ff; --text:#141a33; --muted:#6b7392;
+           --track:#e6e9f5; --shadow:0 10px 30px rgba(20,26,51,.08); }
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+    max-width:520px; margin-inline:auto;
+  }
+  header{ display:flex; align-items:baseline; justify-content:space-between; margin:8px 2px 20px; }
+  header h1{ font-size:24px; margin:0; letter-spacing:-.02em; }
+  header .date{ color:var(--muted); font-size:14px; }
+
+  .card{
+    background:var(--card); border-radius:22px; padding:18px; margin-bottom:16px;
+    box-shadow:var(--shadow); display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;
+  }
+  .ring{
+    --pct:0; width:92px; height:92px; border-radius:50%; flex:none;
+    background:conic-gradient(var(--accent) calc(var(--pct)*1%), var(--track) 0);
+    display:grid; place-items:center; transition:background .35s ease;
+  }
+  .ring .hole{
+    width:72px; height:72px; border-radius:50%; background:var(--card);
+    display:grid; place-items:center; text-align:center; line-height:1;
+  }
+  .ring .val{ font-size:22px; font-weight:700; letter-spacing:-.02em; }
+  .ring .unit{ font-size:11px; color:var(--muted); margin-top:2px; }
+  .ring.done .hole{ box-shadow:inset 0 0 0 2px var(--accent); }
+
+  .body{ min-width:0; }
+  .titlerow{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .titlerow h2{ font-size:17px; margin:0; }
+  .goal{ background:none; border:0; color:var(--muted); font-size:13px; padding:4px 6px; border-radius:8px; cursor:pointer; }
+  .goal:active{ background:var(--card2); }
+
+  .quick{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .quick button{
+    border:0; border-radius:12px; padding:9px 12px; font-size:14px; font-weight:600; cursor:pointer;
+    color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .quick button:active{ transform:scale(.95); }
+
+  .custom{ display:flex; gap:8px; margin-top:10px; }
+  .custom input{
+    flex:1; min-width:0; border:1px solid var(--track); background:var(--card2); color:var(--text);
+    border-radius:12px; padding:9px 12px; font-size:15px;
+  }
+  .custom .add{ border:0; border-radius:12px; padding:0 16px; font-weight:700; cursor:pointer;
+    color:#fff; background:var(--accent); }
+  .custom .undo{ border:1px solid var(--track); background:var(--card2); color:var(--muted);
+    border-radius:12px; padding:0 12px; font-size:16px; cursor:pointer; }
+  .custom button:active{ transform:scale(.95); }
+
+  footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:12px; }
+</style>
+
+<header>
+  <h1>Daily Goals</h1>
+  <span class="date" id="date"></span>
+</header>
+<main id="app"></main>
+<footer>Saved on this device · tap the goal to change it</footer>
+
+<script>
+// ── Trackers. Add another (e.g. weed weekly) by adding one object here. ──────
+const TRACKERS = [
+  { id:'water',   emoji:'💧', name:'Water',   unit:'ml',       period:'day',  goal:3000, accent:'#38bdf8',
+    quick:[['Cup',250],['Bottle',500],['Whey shake',400]] },
+  { id:'protein', emoji:'🍗', name:'Protein', unit:'g',        period:'day',  goal:150,  accent:'#fb923c',
+    quick:[['+20',20],['+30',30],['+40',40]] },
+  { id:'gym',     emoji:'🏋️', name:'Gym',     unit:'sessions', period:'week', goal:4,    accent:'#34d399',
+    quick:[['+1 session',1]] },
+];
+
+const KEY = 'daily-goals-v1';
+const data = load();
+data.goals   ??= {};
+data.entries ??= [];   // [{t:id, a:amount, d:ISOstring}] — ponytail: never pruned; cap if it ever gets huge
+
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {}; }catch{ return {}; } }
+function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+
+// ── Date bucketing ──────────────────────────────────────────────────────────
+function dayKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function weekKey(d){                       // ISO week: same key Mon–Sun
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = (x.getDay()+6)%7;            // Mon=0
+  x.setDate(x.getDate()-day+3);            // nearest Thursday
+  const firstThu = new Date(x.getFullYear(),0,4);
+  const w = 1 + Math.round(((x-firstThu)/86400000 - 3 + ((firstThu.getDay()+6)%7))/7);
+  return x.getFullYear()+'-W'+w;
+}
+const keyOf = (t, d) => t.period==='week' ? weekKey(d) : dayKey(d);
+
+const goalOf   = t => data.goals[t.id] ?? t.goal;
+const nowKey   = t => keyOf(t, new Date());
+const inNow    = (e,t) => keyOf(t, new Date(e.d)) === nowKey(t);
+const totalOf  = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((s,e)=>s+e.a,0);
+
+function add(t, amt){ if(!amt) return; data.entries.push({t:t.id, a:amt, d:new Date().toISOString()}); save(); render(); }
+function undo(t){
+  for(let i=data.entries.length-1; i>=0; i--){
+    if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
+  }
+  save(); render();
+}
+function editGoal(t){
+  const v = prompt(`Goal for ${t.name} (${t.unit} per ${t.period}):`, goalOf(t));
+  if(v!==null && !isNaN(+v) && +v>0){ data.goals[t.id]=+v; save(); render(); }
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render(){
+  document.getElementById('date').textContent =
+    new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+
+  document.getElementById('app').innerHTML = TRACKERS.map((t,i)=>{
+    const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
+    const val = Number.isInteger(cur)? cur : cur.toFixed(0);
+    return `<div class="card" style="--accent:${t.accent}">
+      <div class="ring ${done?'done':''}" style="--pct:${pct}">
+        <div class="hole"><div><div class="val">${val}${done?' ✓':''}</div><div class="unit">${t.unit}</div></div></div>
+      </div>
+      <div class="body">
+        <div class="titlerow">
+          <h2>${t.emoji} ${t.name}</h2>
+          <button class="goal" onclick="editGoal(TRACKERS[${i}])">goal ${g} ${t.unit} ✎</button>
+        </div>
+        <div class="quick">
+          ${t.quick.map(([label,amt])=>`<button onclick="add(TRACKERS[${i}],${amt})">${label}</button>`).join('')}
+        </div>
+        <div class="custom">
+          <input type="number" inputmode="decimal" placeholder="custom ${t.unit}" id="in-${t.id}">
+          <button class="add" onclick="const el=document.getElementById('in-${t.id}');add(TRACKERS[${i}],+el.value);el.value=''">Add</button>
+          <button class="undo" title="Undo last" onclick="undo(TRACKERS[${i}])">↩</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+render();
+
+// ── Self-check: run with #test in the URL (date bucketing is the one tricky bit) ──
+if(location.hash==='#test'){
+  console.assert(dayKey(new Date(2026,6,16))==='2026-7-16','dayKey');
+  console.assert(weekKey(new Date(2026,0,1))===weekKey(new Date(2026,0,2)),'same week');
+  console.assert(weekKey(new Date(2026,0,4))!==weekKey(new Date(2026,0,5)),'week rolls Mon');
+  console.log('self-check passed');
+}
+</script>
