@@ -83,6 +83,24 @@
   details.devices button{ border:0; border-radius:10px; padding:0 12px; font-weight:600; cursor:pointer;
     color:#fff; background:#38bdf8; }
   details.devices p{ color:var(--muted); font-size:12px; margin:8px 0 2px; }
+
+  .topbar{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .topbar button{ border:0; background:var(--card2); color:var(--text); border-radius:12px;
+    padding:9px 14px; font-size:14px; font-weight:600; cursor:pointer; }
+  .topbar button:active{ transform:scale(.96); }
+  .topbar strong{ font-size:16px; }
+  .hday{ background:var(--card); border-radius:18px; padding:14px 16px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .hhead{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px; }
+  .hhead h3{ font-size:15px; margin:0; }
+  .hsum{ font-size:12px; color:var(--muted); text-align:right; }
+  .hrow{ display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center;
+    padding:8px 0; border-top:1px solid var(--track); }
+  .htime{ color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  .hlabel{ font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hamt{ font-weight:600; font-size:14px; font-variant-numeric:tabular-nums; }
+  .hdel{ border:0; background:none; color:var(--muted); font-size:15px; cursor:pointer; padding:4px 8px; border-radius:8px; }
+  .hdel:active{ background:var(--card2); color:#f87171; }
+  .empty{ color:var(--muted); text-align:center; margin-top:36px; }
   footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:14px; }
 </style>
 
@@ -131,8 +149,10 @@ const LKEY = 'daily-goals-v1';
 let vaultId = localStorage.getItem('daily-goals-vault');
 if(!vaultId){ vaultId = crypto.randomUUID(); localStorage.setItem('daily-goals-vault', vaultId); }
 
-const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{t,a,d}] — ponytail: never pruned
+const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{id,t,a,d}] — ponytail: never pruned
 let data = readLocal();
+let view = 'home';                                             // 'home' | 'history'
+function normalize(){ for(const e of data.entries) if(!e.id) e.id = crypto.randomUUID(); }  // backfill ids for delete-by-id
 
 function readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)) || blank(); }catch{ return blank(); } }
 function writeLocal(){ localStorage.setItem(LKEY, JSON.stringify(data)); }
@@ -169,7 +189,7 @@ const inNow   = (e,t) => keyOf(t,new Date(e.d)) === keyOf(t,new Date());
 const totalOf = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((s,e)=>s+e.a,0);
 
 // ── Actions (exposed for inline onclick) ─────────────────────────────────────
-window.add = (t, amt) => { if(!amt) return; data.entries.push({t:t.id, a:amt, d:new Date().toISOString()}); touchSave(); };
+window.add = (t, amt) => { if(!amt) return; data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()}); touchSave(); };
 window.undo = t => {
   for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
@@ -190,13 +210,25 @@ window.useCode = async () => {
   await boot(); document.getElementById('otherCode').value='';
 };
 
+window.showHistory = () => { view='history'; render(); scrollTo(0,0); };
+window.showHome    = () => { view='home';    render(); scrollTo(0,0); };
+window.delEntry    = id => { data.entries = data.entries.filter(e => e.id!==id); touchSave(); };
+
 // ── Render ──────────────────────────────────────────────────────────────────
 function render(){
+  normalize();
   document.getElementById('date').textContent =
     new Date().toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
   document.getElementById('myCode').value = vaultId;
+  const hide = view==='history';
+  document.querySelector('details.devices').style.display = hide ? 'none' : '';
+  document.querySelector('footer').style.display          = hide ? 'none' : '';
+  document.getElementById('app').innerHTML = hide ? historyHTML() : homeHTML();
+}
 
-  document.getElementById('app').innerHTML = TRACKERS.map((t,i)=>{
+function homeHTML(){
+  return `<div class="topbar"><button onclick="showHistory()">📜 History</button></div>` +
+  TRACKERS.map((t,i)=>{
     const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
     const val = Number.isInteger(cur)? cur : cur.toFixed(0);
     return `<div class="card" style="--accent:${t.accent}">
@@ -219,6 +251,39 @@ function render(){
       </div>
     </div>`;
   }).join('');
+}
+
+function friendlyDay(d){
+  const today=new Date(), yest=new Date(); yest.setDate(today.getDate()-1);
+  if(dayKey(d)===dayKey(today)) return 'Today';
+  if(dayKey(d)===dayKey(yest))  return 'Yesterday';
+  return d.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+}
+
+function historyHTML(){
+  const sorted = [...data.entries].sort((a,b)=> new Date(b.d) - new Date(a.d));
+  const byDay = {};
+  for(const e of sorted){ const k = dayKey(new Date(e.d)); (byDay[k] ??= []).push(e); }
+  const days = Object.keys(byDay);
+  const body = days.length ? days.map(k=>{
+    const list = byDay[k];
+    const summary = TRACKERS.map(t=>{
+      const s = list.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0);
+      return s ? `${t.emoji} ${s}${t.unit==='sessions'?'':' '+t.unit}` : null;
+    }).filter(Boolean).join(' · ');
+    const rows = list.map(e=>{
+      const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
+      const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      return `<div class="hrow">
+        <span class="htime">${time}</span>
+        <span class="hlabel">${t.emoji} ${t.name}</span>
+        <span class="hamt">${e.a>0?'+':''}${e.a} ${t.unit}</span>
+        <button class="hdel" title="Delete" onclick="delEntry('${e.id}')">✕</button>
+      </div>`;
+    }).join('');
+    return `<div class="hday"><div class="hhead"><h3>${friendlyDay(new Date(list[0].d))}</h3><span class="hsum">${summary}</span></div>${rows}</div>`;
+  }).join('') : '<p class="empty">No entries yet — add something on the home screen.</p>';
+  return `<div class="topbar"><button onclick="showHome()">← Back</button><strong>History</strong></div>` + body;
 }
 
 // ── Boot: show cached data instantly, then reconcile with cloud (newest wins) ─
