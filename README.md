@@ -1,29 +1,40 @@
 # 🎯 Daily Goals
 
 A tiny personal tracker for **water**, **protein**, and **gym** — with daily/weekly goals.
-One HTML file, no backend, data stored on your device (localStorage).
+Cloud-synced across devices, **no login**. Live at
+**https://barpg2802.github.io/daily-goals/**
 
 ## Use it
-Open `index.html`. Tap quick-add buttons (Cup / Bottle / Whey shake, protein amounts, +1 gym session)
+Tap quick-add buttons (Cup / Bottle / Whey shake, protein amounts, +1 gym session)
 or type a custom amount. Tap a goal to change it. `↩` undoes the last entry.
-Water & protein reset each day; gym resets each week.
+Water & protein reset each day; gym resets each week. The dot up top shows sync status
+(green = synced, orange = offline, still saved on the device).
 
-## Put it on your iPhone (feels like an app)
-1. Open the deployed URL in Safari.
-2. Share → **Add to Home Screen**. Launches full-screen, no browser bars.
+## On your iPhone (feels like an app)
+Open the URL in Safari → Share → **Add to Home Screen**. Full-screen, no browser bars.
 
-## Deploy free on GitHub Pages
-```bash
-git init && git add -A && git commit -m "Daily Goals"
-gh repo create daily-goals --public --source=. --push
-gh api -X POST repos/{owner}/daily-goals/pages -f build_type=legacy -f 'source[branch]=main' -f 'source[path]=/'
-```
-Then open `https://<user>.github.io/daily-goals/`.
+## Sync to a second device (optional)
+Data lives under a secret **sync code** stored on your device. To see the same data
+elsewhere: open **🔗 Sync across devices** on device 1, **Copy** the code, paste it into
+the same panel on device 2 → **Use**. If you only use one phone, ignore this.
 
-## Add another tracker
-Add one object to the `TRACKERS` array in `index.html` (e.g. weed, weekly). That's the whole change.
+## How the "DB" works
+- Storage is **Supabase** (hosted Postgres). Each install gets a random UUID "vault";
+  that UUID *is* the secret. The `vault` table is sealed by RLS, and the app reaches
+  exactly one vault through two `SECURITY DEFINER` functions — so nobody can list
+  anyone else's data. See [supabase-setup.sql](supabase-setup.sql).
+- `localStorage` is kept as an instant-load + offline cache. On open the app shows the
+  cached data immediately, then reconciles with the cloud (**newest write wins**).
+- Project: `https://hpzjieftfscvppwklqjf.supabase.co` (anon key is public by design).
+
+## Add another tracker (e.g. weed, weekly)
+Add one object to the `TRACKERS` array near the top of the `<script>` in
+[index.html](index.html). That's the whole change.
 
 ## Not included (add when you actually need it)
-- **Multi-device sync** — data lives on one device. Add a real DB/backend (Supabase, etc.) if you want it on phone + laptop.
-- **Offline service worker** — works offline once loaded anyway; add a SW for guaranteed offline.
-- **History/streak charts** — every entry is already stored, so this is easy to add later.
+- **Accounts / real auth** — the vault-code model has no per-user login. Fine for a
+  personal tracker; switch to Supabase Auth if the data gets sensitive.
+- **Offline write queue** — offline edits are cached locally and pushed on the next
+  successful save (the full state is sent each time, so a missed write self-heals).
+  Two devices editing while one is offline can clobber via last-write-wins.
+- **History / streak charts** — every entry is stored with a timestamp, so this is easy later.
