@@ -212,6 +212,7 @@ window.undo = t => {
 function yesterdayDate(){ const d=new Date(); d.setDate(d.getDate()-1); return d; }
 const onDay    = (e,d) => dayKey(new Date(e.d)) === dayKey(d);
 const dayTotal = (id,d) => data.entries.filter(e=>e.t===id && onDay(e,d)).reduce((s,e)=>s+e.a,0);
+const plur = (n,u) => (Math.abs(n)===1 && u.endsWith('s')) ? u.slice(0,-1) : u;   // 1 session, 2 sessions
 window.addYesterday = (t, amt) => { if(!amt) return; const d=yesterdayDate(); d.setHours(12,0,0,0);
   data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()}); touchSave(); };
 window.undoYesterday = t => { const y=yesterdayDate();
@@ -281,7 +282,7 @@ function homeHTML(){
   const yRows = TRACKERS.map((t,i)=>{
     const amt = dayTotal(t.id, y), val = Number.isInteger(amt)? amt : amt.toFixed(0);
     return `<div class="ycard" style="--accent:${t.accent}">
-      <div class="yhead"><span class="yname">${t.emoji} ${t.name}</span><span class="yamt">${val} ${t.unit}</span></div>
+      <div class="yhead"><span class="yname">${t.emoji} ${t.name}</span><span class="yamt">${val} ${plur(amt,t.unit)}</span></div>
       <div class="quick">
         ${t.quick.map(([label,a])=>`<button onclick="addYesterday(TRACKERS[${i}],${a})">${label}</button>`).join('')}
       </div>
@@ -315,13 +316,12 @@ function historyHTML(){
     const summary = TRACKERS.map(t=>{
       const s = list.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0);
       if(!s) return null;
-      const u = (s===1 && t.unit.endsWith('s')) ? t.unit.slice(0,-1) : t.unit;
-      return `${t.emoji} ${s} ${u}`;
+      return `${t.emoji} ${s} ${plur(s,t.unit)}`;
     }).filter(Boolean).join(' · ');
     const rows = list.map(e=>{
       const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
       const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      const unit = (Math.abs(e.a)===1 && t.unit.endsWith('s')) ? t.unit.slice(0,-1) : t.unit;
+      const unit = plur(e.a, t.unit);
       return `<div class="hrow">
         <span class="htime">${time}</span>
         <span class="hlabel">${t.emoji} ${t.name}</span>
