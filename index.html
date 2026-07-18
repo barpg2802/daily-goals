@@ -101,6 +101,16 @@
   .hdel{ border:0; background:none; color:var(--muted); font-size:15px; cursor:pointer; padding:4px 8px; border-radius:8px; }
   .hdel:active{ background:var(--card2); color:#f87171; }
   .empty{ color:var(--muted); text-align:center; margin-top:36px; }
+
+  details.yesterday{ background:var(--card); border-radius:22px; padding:4px 18px 12px; box-shadow:var(--shadow); margin-bottom:16px; }
+  details.yesterday>summary{ cursor:pointer; color:var(--text); font-size:15px; font-weight:600; padding:14px 0; list-style:none; }
+  details.yesterday>summary::-webkit-details-marker{ display:none; }
+  details.yesterday>summary::before{ content:'▸'; color:var(--muted); margin-right:8px; }
+  details.yesterday[open]>summary::before{ content:'▾'; }
+  .ycard{ border-top:1px solid var(--track); padding:12px 0; --accent:#38bdf8; }
+  .yhead{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .yname{ font-size:15px; font-weight:600; }
+  .yamt{ font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums; }
   footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:14px; }
 </style>
 
@@ -142,7 +152,9 @@ const TRACKERS = [
     quick:[['+20',20],['+30',30],['+40',40]] },
   { id:'gym',     emoji:'🏋️', name:'Gym',     unit:'sessions', period:'week', goal:4,    accent:'#34d399',
     quick:[['+1 session',1]] },
-  { id:'dailyf',  emoji:'🅵',  name:'daily F',  unit:'times',    period:'week', goal:3,    accent:'#a78bfa',
+  { id:'dailyf',  emoji:'🅵',  name:'weekly F', unit:'times',    period:'week', goal:3,    accent:'#a78bfa',
+    quick:[['+1',1]] },
+  { id:'weeklyw', emoji:'🆆',  name:'weekly W', unit:'times',    period:'week', goal:3,    accent:'#22c55e',
     quick:[['+1',1]] },
 ];
 
@@ -154,6 +166,7 @@ if(!vaultId){ vaultId = crypto.randomUUID(); localStorage.setItem('daily-goals-v
 const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{id,t,a,d}] — ponytail: never pruned
 let data = readLocal();
 let view = 'home';                                             // 'home' | 'history'
+let yOpen = false;                                            // keep the Yesterday panel open across re-renders
 function normalize(){ for(const e of data.entries) if(!e.id) e.id = crypto.randomUUID(); }  // backfill ids for delete-by-id
 
 function readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)) || blank(); }catch{ return blank(); } }
@@ -194,6 +207,19 @@ window.undo = t => {
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
   touchSave();
 };
+
+// ── Yesterday editing: log/undo entries dated to the previous calendar day ────
+function yesterdayDate(){ const d=new Date(); d.setDate(d.getDate()-1); return d; }
+const onDay    = (e,d) => dayKey(new Date(e.d)) === dayKey(d);
+const dayTotal = (id,d) => data.entries.filter(e=>e.t===id && onDay(e,d)).reduce((s,e)=>s+e.a,0);
+window.addYesterday = (t, amt) => { if(!amt) return; const d=yesterdayDate(); d.setHours(12,0,0,0);
+  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()}); touchSave(); };
+window.undoYesterday = t => { const y=yesterdayDate();
+  for(let i=data.entries.length-1; i>=0; i--)
+    if(data.entries[i].t===t.id && onDay(data.entries[i],y)){ data.entries.splice(i,1); break; }
+  touchSave();
+};
+window.__yToggle = v => { yOpen = v; };
 window.editGoal = t => {
   const v = prompt(`Goal for ${t.name} (${t.unit} per ${t.period}):`, goalOf(t));
   if(v!==null && !isNaN(+v) && +v>0){ data.goals[t.id]=+v; touchSave(); }
@@ -226,8 +252,7 @@ function render(){
 }
 
 function homeHTML(){
-  return `<div class="topbar"><button onclick="showHistory()">📜 History</button></div>` +
-  TRACKERS.map((t,i)=>{
+  const cards = TRACKERS.map((t,i)=>{
     const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
     const val = Number.isInteger(cur)? cur : cur.toFixed(0);
     return `<div class="card" style="--accent:${t.accent}">
@@ -250,6 +275,27 @@ function homeHTML(){
       </div>
     </div>`;
   }).join('');
+
+  const y = yesterdayDate();
+  const yLabel = y.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+  const yRows = TRACKERS.map((t,i)=>{
+    const amt = dayTotal(t.id, y), val = Number.isInteger(amt)? amt : amt.toFixed(0);
+    return `<div class="ycard" style="--accent:${t.accent}">
+      <div class="yhead"><span class="yname">${t.emoji} ${t.name}</span><span class="yamt">${val} ${t.unit}</span></div>
+      <div class="quick">
+        ${t.quick.map(([label,a])=>`<button onclick="addYesterday(TRACKERS[${i}],${a})">${label}</button>`).join('')}
+      </div>
+      <div class="custom">
+        <input type="number" inputmode="decimal" placeholder="custom ${t.unit}" id="yin-${t.id}">
+        <button class="add" onclick="const el=document.getElementById('yin-${t.id}');addYesterday(TRACKERS[${i}],+el.value);el.value=''">Add</button>
+        <button class="undo" title="Undo yesterday's last" onclick="undoYesterday(TRACKERS[${i}])">↩</button>
+      </div>
+    </div>`;
+  }).join('');
+  const yPanel = `<details class="yesterday" ${yOpen?'open':''} ontoggle="__yToggle(this.open)">
+    <summary>Yesterday · ${yLabel}</summary>${yRows}</details>`;
+
+  return `<div class="topbar"><button onclick="showHistory()">📜 History</button></div>` + cards + yPanel;
 }
 
 function friendlyDay(d){
