@@ -49,7 +49,7 @@
   }
   .ring .val{ font-size:22px; font-weight:700; letter-spacing:-.02em; }
   .ring .unit{ font-size:11px; color:var(--muted); margin-top:2px; }
-  .ring.done .hole{ box-shadow:inset 0 0 0 2px var(--accent); }
+  .ring.mark .hole{ box-shadow:inset 0 0 0 2px var(--accent); }
   .ring{ transition:background .5s cubic-bezier(.34,1.56,.64,1); }        /* springy fill */
   .ring.bounce{ animation:ringbounce .45s cubic-bezier(.34,1.56,.64,1); }
   .val.pop{ display:inline-block; animation:pop .45s cubic-bezier(.34,1.56,.64,1); }
@@ -112,6 +112,10 @@
   .confetti i{ position:absolute; top:-12vh; width:9px; height:14px; border-radius:2px;
     animation:confetti-fall 1.8s cubic-bezier(.2,.6,.4,1) forwards; }
   @keyframes confetti-fall{ 0%{ transform:translate(0,0) rotate(0); opacity:1 } 100%{ transform:translate(var(--x),120vh) rotate(var(--r)); opacity:.9 } }
+  .section{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:2px 4px 12px; }
+  .card + .section{ margin-top:22px; }
+  .card.shake{ animation:shake .4s; }
+  @keyframes shake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
 
   details.yesterday{ background:var(--card); border-radius:22px; padding:4px 18px 12px; box-shadow:var(--shadow); margin-bottom:16px; }
   details.yesterday>summary{ cursor:pointer; color:var(--text); font-size:15px; font-weight:600; padding:14px 0; list-style:none; }
@@ -163,11 +167,11 @@ const TRACKERS = [
     quick:[['+20',20],['+30',30],['+40',40]] },
   { id:'gym',     emoji:'🏋️', name:'Gym',     unit:'sessions', period:'week', goal:4,    accent:'#34d399',
     quick:[['+1 session',1]] },
-  { id:'dailyf',  emoji:'🅵',  name:'weekly F', unit:'times',    period:'week', goal:3,    accent:'#a78bfa',
+  { id:'dailyf',  emoji:'🅵',  name:'weekly F', unit:'times',    period:'week', goal:3,    accent:'#a78bfa', limit:true,
     quick:[['+1',1]] },
-  { id:'weeklyw', emoji:'🆆',  name:'weekly W', unit:'times',    period:'week', goal:3,    accent:'#22c55e',
+  { id:'weeklyw', emoji:'🆆',  name:'weekly W', unit:'times',    period:'week', goal:3,    accent:'#22c55e', limit:true,
     quick:[['+1',1]] },
-];
+];  // limit:true → a ceiling to stay under (no confetti; turns amber at cap, red over)
 
 // ── Storage: localStorage = instant/offline cache, Supabase = source of truth ─
 const LKEY = 'daily-goals-v1';
@@ -178,7 +182,8 @@ const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{id,
 let data = readLocal();
 let view = 'home';                                             // 'home' | 'history'
 let yOpen = false;                                            // keep the Yesterday panel open across re-renders
-let pulse = null;                                             // tracker id to animate on the next render
+let pulse = null;                                             // tracker id to pop on the next render
+let warn  = null;                                             // limit tracker id that just went over (shake)
 function normalize(){ for(const e of data.entries) if(!e.id) e.id = crypto.randomUUID(); }  // backfill ids for delete-by-id
 
 function readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)) || blank(); }catch{ return blank(); } }
@@ -216,9 +221,15 @@ const totalOf = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((
 window.add = (t, amt) => { if(!amt) return;
   const before = totalOf(t);
   data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()});
-  pulse = t.id; touchSave();
-  if(before < goalOf(t) && totalOf(t) >= goalOf(t)) confetti();   // just crossed the goal 🎉
+  pulse = t.id; feedback(t, before, totalOf(t)); touchSave();
 };
+
+// Goal reached → confetti 🎉 ; limit exceeded → shake ⚠️ (never celebrate going over a limit)
+function feedback(t, before, after){
+  const g = goalOf(t);
+  if(t.limit){ if(before<=g && after>g) warn = t.id; }
+  else if(before<g && after>=g) confetti();
+}
 window.undo = t => {
   for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
@@ -246,8 +257,8 @@ const plur = (n,u) => (Math.abs(n)===1 && u.endsWith('s')) ? u.slice(0,-1) : u; 
 window.addYesterday = (t, amt) => { if(!amt) return;
   const before = totalOf(t);
   const d=yesterdayDate(); d.setHours(12,0,0,0);
-  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()}); touchSave();
-  if(before < goalOf(t) && totalOf(t) >= goalOf(t)) confetti();   // yesterday backfill crossed this period's goal
+  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()});
+  feedback(t, before, totalOf(t)); touchSave();
 };
 window.undoYesterday = t => { const y=yesterdayDate();
   for(let i=data.entries.length-1; i>=0; i--)
@@ -284,21 +295,25 @@ function render(){
   document.querySelector('details.devices').style.display = hide ? 'none' : '';
   document.querySelector('footer').style.display          = hide ? 'none' : '';
   document.getElementById('app').innerHTML = hide ? historyHTML() : homeHTML();
-  pulse = null;                                              // one-shot: only animates the render right after a tap
+  pulse = null; warn = null;                                 // one-shot animations, only right after a tap
 }
 
 function homeHTML(){
-  const cards = TRACKERS.map((t,i)=>{
-    const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
+  const card = (t,i) => {
+    const cur = totalOf(t), g = goalOf(t);
+    const over = t.limit && cur>g, atLimit = t.limit && cur===g, done = !t.limit && cur>=g;
+    const pct = Math.min(100, g? cur/g*100 : 0);
+    const ringColor = t.limit ? (over?'#ef4444':atLimit?'#f59e0b':'#22c55e') : t.accent;  // limits: green→amber→red
     const val = Number.isInteger(cur)? cur : cur.toFixed(0);
-    return `<div class="card" style="--accent:${t.accent}">
-      <div class="ring ${done?'done':''} ${pulse===t.id?'bounce':''}" style="--pct:${pct}">
-        <div class="hole"><div><div class="val ${pulse===t.id?'pop':''}">${val}${done?' ✓':''}</div><div class="unit">${t.unit}</div></div></div>
+    const badge = done?' ✓' : over?' ⚠' : '';
+    return `<div class="card ${warn===t.id?'shake':''}" style="--accent:${t.accent}">
+      <div class="ring ${(done||over||atLimit)?'mark':''} ${pulse===t.id?'bounce':''}" style="--pct:${pct}; --accent:${ringColor}">
+        <div class="hole"><div><div class="val ${pulse===t.id?'pop':''}">${val}${badge}</div><div class="unit">${t.unit}</div></div></div>
       </div>
       <div class="body">
         <div class="titlerow">
           <h2>${t.emoji} ${t.name}</h2>
-          <button class="goal" onclick="editGoal(TRACKERS[${i}])">goal ${g} ${t.unit} ✎</button>
+          <button class="goal" onclick="editGoal(TRACKERS[${i}])">${t.limit?'limit':'goal'} ${g} ${t.unit} ✎</button>
         </div>
         <div class="quick">
           ${t.quick.map(([label,amt])=>`<button onclick="add(TRACKERS[${i}],${amt})">${label}</button>`).join('')}
@@ -310,7 +325,11 @@ function homeHTML(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  };
+  const withIdx = TRACKERS.map((t,i)=>({t,i}));
+  const section = (label, arr) => arr.length ? `<div class="section">${label}</div>` + arr.map(x=>card(x.t,x.i)).join('') : '';
+  const cards = section('💪 Build these', withIdx.filter(x=>!x.t.limit))
+              + section('⚠️ Keep in check', withIdx.filter(x=> x.t.limit));
 
   const y = yesterdayDate();
   const yLabel = y.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
