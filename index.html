@@ -67,7 +67,7 @@
     border:0; border-radius:12px; padding:9px 12px; font-size:14px; font-weight:600; cursor:pointer;
     color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent);
   }
-  .quick button:active{ transform:scale(.95); }
+  .quick button:active{ transform:scale(.88); }
 
   .custom{ display:flex; gap:8px; margin-top:10px; }
   .custom input{
@@ -75,10 +75,10 @@
     border-radius:12px; padding:9px 12px; font-size:15px;
   }
   .custom .add{ border:0; border-radius:12px; padding:0 16px; font-weight:700; cursor:pointer;
-    color:#fff; background:var(--accent); }
+    color:#fff; background:var(--accent); box-shadow:0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent); }
   .custom .undo{ border:1px solid var(--track); background:var(--card2); color:var(--muted);
     border-radius:12px; padding:0 12px; font-size:16px; cursor:pointer; }
-  .custom button:active{ transform:scale(.95); }
+  .custom button:active{ transform:scale(.88); }
 
   details.devices{ background:var(--card); border-radius:16px; padding:12px 16px; box-shadow:var(--shadow); }
   details.devices summary{ cursor:pointer; color:var(--muted); font-size:14px; }
@@ -116,6 +116,10 @@
   .card + .section{ margin-top:22px; }
   .card.shake{ animation:shake .4s; }
   @keyframes shake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+  .burst{ position:fixed; z-index:60; pointer-events:none; transform:translate(-50%,-50%); }
+  .burst i{ position:absolute; left:0; top:0; width:7px; height:7px; border-radius:50%;
+    animation:burst .6s cubic-bezier(.2,.7,.3,1) forwards; }
+  @keyframes burst{ 0%{ transform:translate(0,0) scale(1); opacity:1 } 100%{ transform:translate(var(--dx),var(--dy)) scale(.3); opacity:0 } }
 
   details.yesterday{ background:var(--card); border-radius:22px; padding:4px 18px 12px; box-shadow:var(--shadow); margin-bottom:16px; }
   details.yesterday>summary{ cursor:pointer; color:var(--text); font-size:15px; font-weight:600; padding:14px 0; list-style:none; }
@@ -222,7 +226,25 @@ window.add = (t, amt) => { if(!amt) return;
   const before = totalOf(t);
   data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()});
   pulse = t.id; feedback(t, before, totalOf(t)); touchSave();
+  burstFor(t.id);                                             // little pop from the ring on every tap
 };
+
+// small particle pop from a tracker's ring (the every-press "juice")
+function burstFor(id){
+  const el = document.querySelector(`.ring[data-tid="${id}"]`); if(!el) return;
+  const r = el.getBoundingClientRect();
+  const color = getComputedStyle(el).getPropertyValue('--accent').trim() || '#38bdf8';
+  const box = document.createElement('div'); box.className='burst';
+  box.style.left=(r.left+r.width/2)+'px'; box.style.top=(r.top+r.height/2)+'px';
+  for(let i=0;i<12;i++){ const p=document.createElement('i');
+    const ang=(Math.PI*2*i)/12 + Math.random()*0.4, dist=28+Math.random()*36;
+    p.style.background=color;
+    p.style.setProperty('--dx',(Math.cos(ang)*dist)+'px');
+    p.style.setProperty('--dy',(Math.sin(ang)*dist)+'px');
+    box.appendChild(p);
+  }
+  document.body.appendChild(box); setTimeout(()=>box.remove(),650);
+}
 
 // Goal reached → confetti 🎉 ; limit exceeded → shake ⚠️ (never celebrate going over a limit)
 function feedback(t, before, after){
@@ -307,7 +329,7 @@ function homeHTML(){
     const val = Number.isInteger(cur)? cur : cur.toFixed(0);
     const badge = done?' ✓' : over?' ⚠' : '';
     return `<div class="card ${warn===t.id?'shake':''}" style="--accent:${t.accent}">
-      <div class="ring ${(done||over||atLimit)?'mark':''} ${pulse===t.id?'bounce':''}" style="--pct:${pct}; --accent:${ringColor}">
+      <div class="ring ${(done||over||atLimit)?'mark':''} ${pulse===t.id?'bounce':''}" data-tid="${t.id}" style="--pct:${pct}; --accent:${ringColor}">
         <div class="hole"><div><div class="val ${pulse===t.id?'pop':''}">${val}${badge}</div><div class="unit">${t.unit}</div></div></div>
       </div>
       <div class="body">
