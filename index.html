@@ -50,6 +50,11 @@
   .ring .val{ font-size:22px; font-weight:700; letter-spacing:-.02em; }
   .ring .unit{ font-size:11px; color:var(--muted); margin-top:2px; }
   .ring.done .hole{ box-shadow:inset 0 0 0 2px var(--accent); }
+  .ring{ transition:background .5s cubic-bezier(.34,1.56,.64,1); }        /* springy fill */
+  .ring.bounce{ animation:ringbounce .45s cubic-bezier(.34,1.56,.64,1); }
+  .val.pop{ display:inline-block; animation:pop .45s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes pop{ 0%{transform:scale(1)} 45%{transform:scale(1.3)} 100%{transform:scale(1)} }
+  @keyframes ringbounce{ 0%{transform:scale(1)} 45%{transform:scale(1.06)} 100%{transform:scale(1)} }
 
   .body{ min-width:0; }
   .titlerow{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -101,6 +106,12 @@
   .hdel{ border:0; background:none; color:var(--muted); font-size:15px; cursor:pointer; padding:4px 8px; border-radius:8px; }
   .hdel:active{ background:var(--card2); color:#f87171; }
   .empty{ color:var(--muted); text-align:center; margin-top:36px; }
+
+  .quick button, .custom .add, .custom .undo, .topbar button, .goal{ transition:transform .13s cubic-bezier(.34,1.56,.64,1); }
+  .confetti{ position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:50; }
+  .confetti i{ position:absolute; top:-12vh; width:9px; height:14px; border-radius:2px;
+    animation:confetti-fall 1.8s cubic-bezier(.2,.6,.4,1) forwards; }
+  @keyframes confetti-fall{ 0%{ transform:translate(0,0) rotate(0); opacity:1 } 100%{ transform:translate(var(--x),120vh) rotate(var(--r)); opacity:.9 } }
 
   details.yesterday{ background:var(--card); border-radius:22px; padding:4px 18px 12px; box-shadow:var(--shadow); margin-bottom:16px; }
   details.yesterday>summary{ cursor:pointer; color:var(--text); font-size:15px; font-weight:600; padding:14px 0; list-style:none; }
@@ -167,6 +178,7 @@ const blank = () => ({ goals:{}, entries:[], updatedAt:0 });   // entries: [{id,
 let data = readLocal();
 let view = 'home';                                             // 'home' | 'history'
 let yOpen = false;                                            // keep the Yesterday panel open across re-renders
+let pulse = null;                                             // tracker id to animate on the next render
 function normalize(){ for(const e of data.entries) if(!e.id) e.id = crypto.randomUUID(); }  // backfill ids for delete-by-id
 
 function readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)) || blank(); }catch{ return blank(); } }
@@ -201,20 +213,42 @@ const inNow   = (e,t) => keyOf(t,new Date(e.d)) === keyOf(t,new Date());
 const totalOf = t => data.entries.filter(e => e.t===t.id && inNow(e,t)).reduce((s,e)=>s+e.a,0);
 
 // ── Actions (exposed for inline onclick) ─────────────────────────────────────
-window.add = (t, amt) => { if(!amt) return; data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()}); touchSave(); };
+window.add = (t, amt) => { if(!amt) return;
+  const before = totalOf(t);
+  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()});
+  pulse = t.id; touchSave();
+  if(before < goalOf(t) && totalOf(t) >= goalOf(t)) confetti();   // just crossed the goal 🎉
+};
 window.undo = t => {
   for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
-  touchSave();
+  pulse = t.id; touchSave();
 };
+
+function confetti(){
+  const colors=['#38bdf8','#fb923c','#34d399','#a78bfa','#22c55e','#f472b6','#fbbf24'];
+  const box=document.createElement('div'); box.className='confetti';
+  for(let i=0;i<70;i++){ const s=document.createElement('i');
+    s.style.left=Math.random()*100+'vw'; s.style.background=colors[i%colors.length];
+    s.style.animationDelay=(Math.random()*0.25)+'s';
+    s.style.setProperty('--x',(Math.random()*2-1)*45+'vw');
+    s.style.setProperty('--r',(Math.random()*720-360)+'deg');
+    box.appendChild(s);
+  }
+  document.body.appendChild(box); setTimeout(()=>box.remove(),2400);
+}
 
 // ── Yesterday editing: log/undo entries dated to the previous calendar day ────
 function yesterdayDate(){ const d=new Date(); d.setDate(d.getDate()-1); return d; }
 const onDay    = (e,d) => dayKey(new Date(e.d)) === dayKey(d);
 const dayTotal = (id,d) => data.entries.filter(e=>e.t===id && onDay(e,d)).reduce((s,e)=>s+e.a,0);
 const plur = (n,u) => (Math.abs(n)===1 && u.endsWith('s')) ? u.slice(0,-1) : u;   // 1 session, 2 sessions
-window.addYesterday = (t, amt) => { if(!amt) return; const d=yesterdayDate(); d.setHours(12,0,0,0);
-  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()}); touchSave(); };
+window.addYesterday = (t, amt) => { if(!amt) return;
+  const before = totalOf(t);
+  const d=yesterdayDate(); d.setHours(12,0,0,0);
+  data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()}); touchSave();
+  if(before < goalOf(t) && totalOf(t) >= goalOf(t)) confetti();   // yesterday backfill crossed this period's goal
+};
 window.undoYesterday = t => { const y=yesterdayDate();
   for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && onDay(data.entries[i],y)){ data.entries.splice(i,1); break; }
@@ -250,6 +284,7 @@ function render(){
   document.querySelector('details.devices').style.display = hide ? 'none' : '';
   document.querySelector('footer').style.display          = hide ? 'none' : '';
   document.getElementById('app').innerHTML = hide ? historyHTML() : homeHTML();
+  pulse = null;                                              // one-shot: only animates the render right after a tap
 }
 
 function homeHTML(){
@@ -257,8 +292,8 @@ function homeHTML(){
     const cur = totalOf(t), g = goalOf(t), pct = Math.min(100, g? cur/g*100 : 0), done = cur>=g;
     const val = Number.isInteger(cur)? cur : cur.toFixed(0);
     return `<div class="card" style="--accent:${t.accent}">
-      <div class="ring ${done?'done':''}" style="--pct:${pct}">
-        <div class="hole"><div><div class="val">${val}${done?' ✓':''}</div><div class="unit">${t.unit}</div></div></div>
+      <div class="ring ${done?'done':''} ${pulse===t.id?'bounce':''}" style="--pct:${pct}">
+        <div class="hole"><div><div class="val ${pulse===t.id?'pop':''}">${val}${done?' ✓':''}</div><div class="unit">${t.unit}</div></div></div>
       </div>
       <div class="body">
         <div class="titlerow">
