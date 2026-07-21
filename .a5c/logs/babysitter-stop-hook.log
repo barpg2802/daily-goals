@@ -55,3 +55,15 @@
 [INFO] 2026-07-19T10:13:12.585Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Checking session file at: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md
 [INFO] 2026-07-19T10:13:12.608Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] No run associated with session — allowing exit
 [INFO] 2026-07-19T10:13:12Z CLI exit code=0
+[INFO] 2026-07-19T10:45:22Z Hook script invoked
+[INFO] 2026-07-19T10:45:22Z PLUGIN_ROOT=/Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-19T10:45:22Z Hook input received (    1439 bytes)
+[INFO] 2026-07-19T10:45:22.673Z handleHookRunStop started
+[INFO] 2026-07-19T10:45:22.676Z Hook input received
+[INFO] 2026-07-19T10:45:22.686Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Session ID: 9865c95d-9595-49f1-bf0c-eb7ff192a115
+[INFO] 2026-07-19T10:45:22.688Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Resolved pluginRoot: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-19T10:45:22.691Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Resolved stateDir: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state
+[INFO] 2026-07-19T10:45:22.694Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Checking session file at: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md
+[INFO] 2026-07-19T10:45:22.698Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Primary state file not found, trying fallback: /Users/barpiglyansky/dev/Playground/daily-goals/.a5c/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md
+[INFO] 2026-07-19T10:45:22.701Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] No active loop found at primary (/Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md) or fallback (/Users/barpiglyansky/dev/Playground/daily-goals/.a5c/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md) — allowing exit
+[INFO] 2026-07-19T10:45:22Z CLI exit code=0

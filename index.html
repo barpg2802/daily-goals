@@ -105,6 +105,13 @@
   .hamt{ font-weight:600; font-size:14px; font-variant-numeric:tabular-nums; }
   .hdel{ border:0; background:none; color:var(--muted); font-size:15px; cursor:pointer; padding:4px 8px; border-radius:8px; }
   .hdel:active{ background:var(--card2); color:#f87171; }
+  .hweek{ background:var(--card); border-radius:18px; padding:14px 16px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .whead h3{ font-size:16px; margin:0 0 8px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ font-size:12px; color:var(--muted); background:var(--card2); border-radius:8px; padding:3px 9px; font-variant-numeric:tabular-nums; }
+  .chip.met{ color:#22c55e; } .chip.over{ color:#ef4444; }
+  .hsub{ border-top:1px solid var(--track); padding-top:8px; margin-top:8px; }
+  .hsub .hhead h4{ font-size:14px; margin:0; }
   .empty{ color:var(--muted); text-align:center; margin-top:36px; }
 
   .quick button, .custom .add, .custom .undo, .topbar button, .goal{ transition:transform .13s cubic-bezier(.34,1.56,.64,1); }
@@ -384,29 +391,45 @@ function friendlyDay(d){
 
 function historyHTML(){
   const sorted = [...data.entries].sort((a,b)=> new Date(b.d) - new Date(a.d));
-  const byDay = {};
-  for(const e of sorted){ const k = dayKey(new Date(e.d)); (byDay[k] ??= []).push(e); }
-  const days = Object.keys(byDay);
-  const body = days.length ? days.map(k=>{
-    const list = byDay[k];
-    const summary = TRACKERS.map(t=>{
-      const s = list.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0);
-      if(!s) return null;
-      return `${t.emoji} ${s} ${plur(s,t.unit)}`;
-    }).filter(Boolean).join(' · ');
-    const rows = list.map(e=>{
-      const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
-      const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      const unit = plur(e.a, t.unit);
-      return `<div class="hrow">
-        <span class="htime">${time}</span>
-        <span class="hlabel">${t.emoji} ${t.name}</span>
-        <span class="hamt">${e.a>0?'+':''}${e.a} ${unit}</span>
-        <button class="hdel" title="Delete" onclick="delEntry('${e.id}')">✕</button>
-      </div>`;
+  const weeks = {};
+  for(const e of sorted){ const wk = weekKey(new Date(e.d)); (weeks[wk] ??= []).push(e); }
+  const weekly = TRACKERS.filter(t=>t.period==='week');
+  const daily  = TRACKERS.filter(t=>t.period!=='week');
+  const thisWk = weekKey(new Date());
+
+  const entryRow = e => {
+    const t = TRACKERS.find(x=>x.id===e.t) || {emoji:'•', name:e.t, unit:''};
+    const time = new Date(e.d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    return `<div class="hrow">
+      <span class="htime">${time}</span>
+      <span class="hlabel">${t.emoji} ${t.name}</span>
+      <span class="hamt">${e.a>0?'+':''}${e.a} ${plur(e.a,t.unit)}</span>
+      <button class="hdel" title="Delete" onclick="delEntry('${e.id}')">✕</button>
+    </div>`;
+  };
+
+  const body = Object.keys(weeks).length ? Object.entries(weeks).map(([wk, list])=>{
+    const d0 = new Date(list[0].d);
+    const start = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate()); start.setDate(start.getDate()-start.getDay());
+    const end = new Date(start); end.setDate(start.getDate()+6);
+    const fmt = d => d.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+    const label = wk===thisWk ? 'This week' : `${fmt(start)} – ${fmt(end)}`;
+    // weekly totals (the thing that was missing) — vs goal, colored good/over
+    const chips = weekly.map(t=>{
+      const s = list.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0), g = goalOf(t);
+      const cls = t.limit ? (s>g?'over':'') : (s>=g?'met':'');
+      return `<span class="chip ${cls}">${t.emoji} ${s}/${g}</span>`;
     }).join('');
-    return `<div class="hday"><div class="hhead"><h3>${friendlyDay(new Date(list[0].d))}</h3><span class="hsum">${summary}</span></div>${rows}</div>`;
+    // daily detail nested by day within the week
+    const byDay = {};
+    for(const e of list){ const dk = dayKey(new Date(e.d)); (byDay[dk] ??= []).push(e); }
+    const daysHtml = Object.values(byDay).map(dl=>{
+      const dsum = daily.map(t=>{ const s=dl.filter(e=>e.t===t.id).reduce((a,e)=>a+e.a,0); return s?`${t.emoji} ${s} ${plur(s,t.unit)}`:null; }).filter(Boolean).join(' · ');
+      return `<div class="hsub"><div class="hhead"><h4>${friendlyDay(new Date(dl[0].d))}</h4><span class="hsum">${dsum}</span></div>${dl.map(entryRow).join('')}</div>`;
+    }).join('');
+    return `<div class="hweek"><div class="whead"><h3>${label}</h3><div class="chips">${chips}</div></div>${daysHtml}</div>`;
   }).join('') : '<p class="empty">No entries yet — add something on the home screen.</p>';
+
   return `<div class="topbar"><button onclick="showHome()">← Back</button><strong>History</strong></div>` + body;
 }
 
