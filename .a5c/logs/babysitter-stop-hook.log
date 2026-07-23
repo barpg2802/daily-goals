@@ -67,3 +67,14 @@
 [INFO] 2026-07-19T10:45:22.698Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Primary state file not found, trying fallback: /Users/barpiglyansky/dev/Playground/daily-goals/.a5c/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md
 [INFO] 2026-07-19T10:45:22.701Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] No active loop found at primary (/Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md) or fallback (/Users/barpiglyansky/dev/Playground/daily-goals/.a5c/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md) — allowing exit
 [INFO] 2026-07-19T10:45:22Z CLI exit code=0
+[INFO] 2026-07-21T12:31:09Z Hook script invoked
+[INFO] 2026-07-21T12:31:09Z PLUGIN_ROOT=/Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-21T12:31:09Z Hook input received (    1684 bytes)
+[INFO] 2026-07-21T12:31:09.945Z handleHookRunStop started
+[INFO] 2026-07-21T12:31:09.949Z Hook input received
+[INFO] 2026-07-21T12:31:09.951Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Session ID: 9865c95d-9595-49f1-bf0c-eb7ff192a115
+[INFO] 2026-07-21T12:31:09.953Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Resolved pluginRoot: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147
+[INFO] 2026-07-21T12:31:09.955Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Resolved stateDir: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state
+[INFO] 2026-07-21T12:31:09.958Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] Checking session file at: /Users/barpiglyansky/.claude/plugins/cache/a5c-ai/babysitter/4.0.147/skills/babysit/state/9865c95d-9595-49f1-bf0c-eb7ff192a115.md
+[INFO] 2026-07-21T12:31:09.980Z [session=9865c95d-9595-49f1-bf0c-eb7ff192a115] No run associated with session — allowing exit
+[INFO] 2026-07-21T12:31:10Z CLI exit code=0

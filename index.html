@@ -137,6 +137,23 @@
   .yhead{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
   .yname{ font-size:15px; font-weight:600; }
   .yamt{ font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  details.challenge{ background:var(--card); border-radius:22px; padding:4px 18px 14px; box-shadow:var(--shadow); margin-bottom:16px; }
+  details.challenge>summary{ cursor:pointer; font-size:15px; font-weight:600; padding:14px 0; list-style:none; }
+  details.challenge>summary::-webkit-details-marker{ display:none; }
+  details.challenge>summary::before{ content:'▸'; color:var(--muted); margin-right:8px; }
+  details.challenge[open]>summary::before{ content:'▾'; }
+  details.challenge p{ color:var(--muted); font-size:13px; margin:6px 0; }
+  details.challenge p.sub{ font-size:12px; margin-top:12px; }
+  .crow{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0; }
+  .crow button{ border:0; border-radius:12px; padding:9px 12px; font-size:14px; font-weight:600; cursor:pointer; color:#fff; background:#38bdf8; }
+  .crow button.ghost{ background:var(--card2); color:var(--text); }
+  .crow input{ flex:1; min-width:0; border:1px solid var(--track); background:var(--card2); color:var(--text); border-radius:10px; padding:9px 10px; font-size:14px; }
+  .lrow{ display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--track); }
+  .lrow.me{ font-weight:700; }
+  .lrank{ font-size:16px; min-width:26px; text-align:center; }
+  .lname{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lval{ font-variant-numeric:tabular-nums; }
   footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:14px; }
 </style>
 
@@ -234,6 +251,7 @@ window.add = (t, amt) => { if(!amt) return;
   data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:new Date().toISOString()});
   pulse = t.id; feedback(t, before, totalOf(t)); touchSave();
   burstFor(t.id);                                             // little pop from the ring on every tap
+  pushIf(t);                                                  // update my number in a friends challenge
 };
 
 // small particle pop from a tracker's ring (the every-press "juice")
@@ -253,6 +271,99 @@ function burstFor(id){
   document.body.appendChild(box); setTimeout(()=>box.remove(),650);
 }
 
+// ── Friends challenge (leaderboard) ──────────────────────────────────────────
+// A "group" is just another shared-code vault. Each member posts their current-
+// period total for the challenge's tracker; the app ranks them. My membership
+// lives in data.challenge so it syncs across my own devices.
+// ponytail: the group blob is last-write-wins — fine for casual use; add an
+// atomic member-merge RPC if simultaneous friend updates ever clobber.
+let challengeData = null;      // fetched group blob (transient, not persisted)
+let cOpen = false;             // challenge panel open-state across re-renders
+
+async function vaultGet(id){ const r = await sb.rpc('get_vault',{p_id:id}); return r.error? undefined : r.data; }
+async function vaultSet(id, blob){ const r = await sb.rpc('save_vault',{p_id:id, p_data:blob, p_updated:new Date().toISOString()}); return !r.error; }
+
+async function pushChallenge(){
+  const c = data.challenge; if(!c) return;
+  const t = TRACKERS.find(x=>x.id===c.tracker); if(!t) return;
+  const g = await vaultGet(c.code); if(g===undefined) return;               // offline
+  const group = g || { challenge:{tracker:c.tracker, name:t.name, unit:t.unit, period:t.period, goal:goalOf(t)}, members:{} };
+  group.members = group.members || {};
+  group.members[c.myId] = { name:c.myName, total: totalOf(t), periodKey: keyOf(t,new Date()), at: Date.now() };
+  await vaultSet(c.code, group);
+  challengeData = group; render();
+}
+function pushIf(t){ if(data.challenge && data.challenge.tracker===t.id) pushChallenge(); }
+
+window.uiCreate = async (trackerId) => {
+  const name = (prompt('Your name on the leaderboard:')||'').trim(); if(!name) return;
+  const t = TRACKERS.find(x=>x.id===trackerId);
+  const code = crypto.randomUUID(), myId = crypto.randomUUID();
+  data.challenge = { code, myId, myName:name, tracker:trackerId }; cOpen = true; touchSave();
+  const group = { challenge:{tracker:trackerId, name:t.name, unit:t.unit, period:t.period, goal:goalOf(t)},
+                  members:{ [myId]:{ name, total:totalOf(t), periodKey:keyOf(t,new Date()), at:Date.now() } } };
+  await vaultSet(code, group); challengeData = group; render();
+  inviteChallenge();
+};
+window.uiJoin = async () => {
+  const code = (document.getElementById('joinCode').value||'').trim(); if(!code) return;
+  const g = await vaultGet(code);
+  if(!g || !g.challenge){ alert('Challenge code not found — double-check it with your friend.'); return; }
+  const name = (prompt('Your name on the leaderboard:')||'').trim(); if(!name) return;
+  const t = TRACKERS.find(x=>x.id===g.challenge.tracker);
+  const myId = crypto.randomUUID();
+  data.challenge = { code, myId, myName:name, tracker:g.challenge.tracker }; cOpen = true; touchSave();
+  g.members = g.members || {};
+  g.members[myId] = { name, total: t?totalOf(t):0, periodKey: t?keyOf(t,new Date()):'', at: Date.now() };
+  await vaultSet(code, g); challengeData = g; render();
+};
+window.refreshChallenge = async () => { if(!data.challenge) return; challengeData = (await vaultGet(data.challenge.code)) || challengeData; render(); };
+window.inviteChallenge = () => { const code = data.challenge && data.challenge.code; if(!code) return;
+  navigator.clipboard && navigator.clipboard.writeText(code);
+  alert('Challenge code copied — share it with a friend so they can join:\n\n'+code); };
+window.leaveChallenge = async () => {
+  const c = data.challenge; if(!c || !confirm('Leave this challenge?')) return;
+  const g = await vaultGet(c.code); if(g && g.members){ delete g.members[c.myId]; await vaultSet(c.code, g); }
+  data.challenge = null; challengeData = null; cOpen = false; touchSave();
+};
+window.__cToggle = v => { cOpen = v; if(v && data.challenge) refreshChallenge(); };
+
+function challengeHTML(){
+  const c = data.challenge;
+  if(!c){
+    return `<details class="challenge" ${cOpen?'open':''} ontoggle="__cToggle(this.open)">
+      <summary>🏆 Friends challenge</summary>
+      <p>Compete with friends on a goal — everyone logs their own, see who's ahead.</p>
+      <p class="sub">Start one on a tracker:</p>
+      <div class="crow">${TRACKERS.map(t=>`<button style="background:${t.accent}" onclick="uiCreate('${t.id}')">${t.emoji} ${t.name}</button>`).join('')}</div>
+      <p class="sub">…or join a friend's:</p>
+      <div class="crow"><input id="joinCode" placeholder="paste challenge code"><button onclick="uiJoin()">Join</button></div>
+    </details>`;
+  }
+  const t = TRACKERS.find(x=>x.id===c.tracker) || {name:c.tracker, unit:'', emoji:'🏆', period:'week'};
+  const nowKey = keyOf(t, new Date());
+  const g = challengeData || {members:{}};
+  const members = Object.entries(g.members||{}).map(([id,m])=>({
+    name:m.name||'friend', total:(m.periodKey===nowKey ? (m.total||0) : 0), me:id===c.myId
+  })).sort((a,b)=> b.total - a.total);
+  const medals = ['🥇','🥈','🥉'];
+  const rows = members.map((m,i)=>`<div class="lrow ${m.me?'me':''}">
+      <span class="lrank">${medals[i]||('#'+(i+1))}</span>
+      <span class="lname">${m.name}${m.me?' (you)':''}</span>
+      <span class="lval">${m.total} ${plur(m.total,t.unit)}</span>
+    </div>`).join('') || '<p>No one has logged yet this period.</p>';
+  const when = t.period==='week' ? 'this week' : 'today';
+  return `<details class="challenge" ${cOpen?'open':''} ontoggle="__cToggle(this.open)">
+    <summary>🏆 ${t.emoji} ${t.name} · ${when}</summary>
+    ${rows}
+    <div class="crow">
+      <button onclick="refreshChallenge()">↻ Refresh</button>
+      <button class="ghost" onclick="inviteChallenge()">Invite</button>
+      <button class="ghost" onclick="leaveChallenge()">Leave</button>
+    </div>
+  </details>`;
+}
+
 // Goal reached → confetti 🎉 ; limit exceeded → shake ⚠️ (never celebrate going over a limit)
 function feedback(t, before, after){
   const g = goalOf(t);
@@ -262,7 +373,7 @@ function feedback(t, before, after){
 window.undo = t => {
   for(let i=data.entries.length-1; i>=0; i--)
     if(data.entries[i].t===t.id && inNow(data.entries[i],t)){ data.entries.splice(i,1); break; }
-  pulse = t.id; touchSave();
+  pulse = t.id; touchSave(); pushIf(t);
 };
 
 function confetti(){
@@ -287,7 +398,7 @@ window.addYesterday = (t, amt) => { if(!amt) return;
   const before = totalOf(t);
   const d=yesterdayDate(); d.setHours(12,0,0,0);
   data.entries.push({id:crypto.randomUUID(), t:t.id, a:amt, d:d.toISOString()});
-  feedback(t, before, totalOf(t)); touchSave();
+  feedback(t, before, totalOf(t)); touchSave(); pushIf(t);
 };
 window.undoYesterday = t => { const y=yesterdayDate();
   for(let i=data.entries.length-1; i>=0; i--)
@@ -379,7 +490,7 @@ function homeHTML(){
   const yPanel = `<details class="yesterday" ${yOpen?'open':''} ontoggle="__yToggle(this.open)">
     <summary>Yesterday · ${yLabel}</summary>${yRows}</details>`;
 
-  return `<div class="topbar"><button onclick="showHistory()">📜 History</button></div>` + cards + yPanel;
+  return `<div class="topbar"><button onclick="showHistory()">📜 History</button></div>` + cards + challengeHTML() + yPanel;
 }
 
 function friendlyDay(d){
@@ -435,7 +546,7 @@ function historyHTML(){
 
 // ── Boot: show cached data instantly, then reconcile with cloud (newest wins) ─
 async function boot(){
-  data = readLocal(); render();
+  data = readLocal(); cOpen = !!data.challenge; render();
   const remote = await pull();
   if(remote === undefined) return;                 // offline: keep local, indicator already set
   if(remote && (remote.updatedAt||0) >= (data.updatedAt||0)){
@@ -446,6 +557,8 @@ async function boot(){
   } else {
     setSync('synced','synced');                    // both empty
   }
+  cOpen = !!data.challenge; render();
+  if(data.challenge) pushChallenge();               // sync my total + fetch the leaderboard
 }
 boot();
 
